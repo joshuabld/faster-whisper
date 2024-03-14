@@ -206,6 +206,7 @@ class WhisperModel:
         condition_on_previous_text: bool = True,
         prompt_reset_on_temperature: float = 0.5,
         initial_prompt: Optional[Union[str, Iterable[int]]] = None,
+        hotwords: Optional[Union[str, Iterable[int]]] = None,
         prefix: Optional[str] = None,
         suppress_blank: bool = True,
         suppress_tokens: Optional[List[int]] = [-1],
@@ -802,6 +803,34 @@ class WhisperModel:
 
         return self.model.encode(features, to_cpu=to_cpu)
 
+    def rank_hypotheses(self, hypotheses, desired_words):
+        scores = []
+
+        for hypothesis in hypotheses:
+            if isinstance(hypothesis, tuple):
+                whisper_result, logprob, temperature, *_ = hypothesis
+                # Iterate over each sequence in the WhisperGenerationResult
+                for sequence in whisper_result.sequences:
+                    # Construct the text from the sequence
+                    text = ''.join(sequence).replace('Ġ',
+                                                     ' ').strip().lower()  # Convert to lowercase for case-insensitive comparison
+                    # Score the sequence based on the presence of desired_words, also case-insensitive
+                    score = sum(word.lower() in text for word in
+                                desired_words)  # Convert desired_words to lowercase for comparison
+                    # Append the score and details for ranking
+                    scores.append((score, text, logprob, temperature))
+            else:
+                text = str(hypothesis).lower()  # Convert to lowercase for case-insensitive comparison
+                logprob = 0.0
+                temperature = 0.0
+                score = sum(
+                    word.lower() in text for word in desired_words)  # Convert desired_words to lowercase for comparison
+                scores.append((score, text, logprob, temperature))
+
+        # Sort the hypotheses based on the score
+        ranked = sorted(scores, reverse=True, key=lambda x: x[0])
+        return ranked
+
     def generate_with_fallback(
         self,
         encoder_output: ctranslate2.StorageView,
@@ -878,6 +907,7 @@ class WhisperModel:
                 compression_ratio,
             )
             all_results.append(decode_result)
+            print('🟠🟠🟠all_results', all_results)
 
             needs_fallback = False
 
@@ -929,6 +959,15 @@ class WhisperModel:
                 temperature,
                 decode_result[3],
             )
+
+        # Rank all generated hypotheses
+        desired_words = ["Joshua", "Frances"]
+        ranked_hypotheses = self.rank_hypotheses(hypotheses=all_results, desired_words=desired_words)
+        print('🟠🟠🟠ranked_hypotheses', ranked_hypotheses)
+
+        # Select the best hypothesis based on ranking
+        best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
+        print('🟠🟠🟠best_hypothesis', best_hypothesis)
 
         return decode_result
 
