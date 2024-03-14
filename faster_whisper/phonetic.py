@@ -130,10 +130,10 @@ def get_matching_custom_words(sentence):
     print("AFTER:", filtered_matching_words)
 
     # Construct and return the final string if there are any matching words after filtering
-    if filtered_matching_words:
-        return "topics about " + ", ".join(filtered_matching_words)
+    # if filtered_matching_words:
+    #     return "topics about " + ", ".join(filtered_matching_words)
 
-    return ''
+    return filtered_matching_words
 
 
 # Example usage with fuzzy matching enabled

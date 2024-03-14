@@ -11,6 +11,7 @@ import ctranslate2
 import numpy as np
 import tokenizers
 
+from faster_whisper.phonetic import get_matching_custom_words
 from faster_whisper.audio import decode_audio, pad_or_trim
 from faster_whisper.feature_extractor import FeatureExtractor
 from faster_whisper.tokenizer import _LANGUAGE_CODES, Tokenizer
@@ -964,6 +965,26 @@ class WhisperModel:
         desired_words = ["Joshua", "Frances"]
         ranked_hypotheses = self.rank_hypotheses(hypotheses=all_results, desired_words=desired_words)
         print('🟠🟠🟠ranked_hypotheses', ranked_hypotheses)
+
+        # Extracting texts from ranked_hypotheses
+        texts_array = [hypothesis[1] for hypothesis in ranked_hypotheses]
+        print('🟠🟠🟠texts_array', texts_array)
+
+        # Loop thru the texts_array and get the hotwords like
+        # context_prompt_related_keywords = get_matching_custom_words(draft_text)
+        # Initialize an empty list to store context-related keywords for each text
+        context_related_keywords_array = []
+
+        # Loop through each text in texts_array to extract hotwords
+        for draft_text in texts_array:
+            context_prompt_related_keywords = get_matching_custom_words(draft_text)
+            context_related_keywords_array.extend(context_prompt_related_keywords)
+
+        # Convert the list to a set to remove duplicates, then convert it back to a list
+        context_related_keywords_array = list(set(context_related_keywords_array))
+
+        # Print the array of context-related keywords for each text
+        print('🟠🟠🟠context_related_keywords_array', context_related_keywords_array)
 
         # Select the best hypothesis based on ranking
         best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
