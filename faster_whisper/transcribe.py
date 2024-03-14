@@ -891,6 +891,8 @@ class WhisperModel:
                 **kwargs,
             )[0]
 
+            print('🟠🟠🟠result', result)
+
             tokens = result.sequences_ids[0]
 
             # Recover the average log prob from the returned score.
@@ -989,6 +991,12 @@ class WhisperModel:
         # Select the best hypothesis based on ranking
         best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
         print('🟠🟠🟠best_hypothesis', best_hypothesis)
+
+        # TODO: do a recursive call here call the model that generate function again but pass the correct tokens and using them as the hot words
+        # generate_with_fallback
+        # add a plug to skip the finding of the hot words since we only need to do that at the first call of the function
+        # Add a additional plug such that aside from updating the prompt, we also do another re-ranking so that we're making sure that the last selected output contains the hotwords
+        # It might not be a good idea to do any re-ranking because it overrides the lowest average probability which is mostly more accurate when trying to compare it from the audio to the transcription compared to just selecting the output based on the hack words
 
         return decode_result
 
