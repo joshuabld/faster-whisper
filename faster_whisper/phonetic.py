@@ -104,6 +104,7 @@ def get_matching_custom_words(sentence):
                     'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most',
                     'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
                     's', 't', 'can', 'will', 'just', 'don', 'should', 'now'}
+    char_length_comparison = 3
 
     matching_custom_words = find_matching_custom_words(sentence, phonetic_dict, fuzzy_match=True)
 
@@ -117,13 +118,13 @@ def get_matching_custom_words(sentence):
     first_letters_phonetics = set()
     for word in sentence_words:
         if len(word) > 1:
-            primary, secondary = doublemetaphone(word[:2])
+            primary, secondary = doublemetaphone(word[:char_length_comparison])
             first_letters_phonetics.update([code for code in (primary, secondary) if code])
 
     # Filter the matching custom words to include those whose phonetic representations (of their first two letters) match any in the sentence
     filtered_matching_words = []
     for word in matching_custom_words:
-        word_phonetic_codes = doublemetaphone(word[:2])
+        word_phonetic_codes = doublemetaphone(word[:char_length_comparison])
         if any(code in first_letters_phonetics for code in word_phonetic_codes if code):
             filtered_matching_words.append(word)
 

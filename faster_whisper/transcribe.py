@@ -838,6 +838,7 @@ class WhisperModel:
         prompt: List[int],
         tokenizer: Tokenizer,
         options: TranscriptionOptions,
+        hotword_injection=True
     ) -> Tuple[ctranslate2.models.WhisperGenerationResult, float, float, float]:
         decode_result = None
         all_results = []
@@ -963,40 +964,82 @@ class WhisperModel:
                 decode_result[3],
             )
 
-        # Rank all generated hypotheses
-        desired_words = ["Joshua", "Frances"]
-        ranked_hypotheses = self.rank_hypotheses(hypotheses=all_results, desired_words=desired_words)
-        print('🟠🟠🟠ranked_hypotheses', ranked_hypotheses)
+        if hotword_injection:
+            # Rank all generated hypotheses
+            desired_words = ["Joshua", "Frances"]
+            ranked_hypotheses = self.rank_hypotheses(hypotheses=all_results, desired_words=desired_words)
+            print('🟠🟠🟠ranked_hypotheses', ranked_hypotheses)
 
-        # Extracting texts from ranked_hypotheses
-        texts_array = [hypothesis[1] for hypothesis in ranked_hypotheses]
-        print('🟠🟠🟠texts_array', texts_array)
+            # Extracting texts from ranked_hypotheses
+            texts_array = [hypothesis[1] for hypothesis in ranked_hypotheses]
+            print('🟠🟠🟠texts_array', texts_array)
 
-        # Loop thru the texts_array and get the hotwords like
-        # context_prompt_related_keywords = get_matching_custom_words(draft_text)
-        # Initialize an empty list to store context-related keywords for each text
-        context_related_keywords_array = []
+            # Loop thru the texts_array and get the hotwords like
+            # context_prompt_related_keywords = get_matching_custom_words(draft_text)
+            # Initialize an empty list to store context-related keywords for each text
+            context_related_keywords_array = []
 
-        # Loop through each text in texts_array to extract hotwords
-        for draft_text in texts_array:
-            context_prompt_related_keywords = get_matching_custom_words(draft_text)
-            context_related_keywords_array.extend(context_prompt_related_keywords)
+            # Loop through each text in texts_array to extract hotwords
+            for draft_text in texts_array:
+                context_prompt_related_keywords = get_matching_custom_words(draft_text)
+                context_related_keywords_array.extend(context_prompt_related_keywords)
 
-        # Convert the list to a set to remove duplicates, then convert it back to a list
-        context_related_keywords_array = list(set(context_related_keywords_array))
+            # Convert the list to a set to remove duplicates, then convert it back to a list
+            context_related_keywords_array = list(set(context_related_keywords_array))
 
-        # Print the array of context-related keywords for each text
-        print('🟠🟠🟠context_related_keywords_array', context_related_keywords_array)
+            # Print the array of context-related keywords for each text
+            print('🟠🟠🟠context_related_keywords_array', context_related_keywords_array)
 
-        # Select the best hypothesis based on ranking
-        best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
-        print('🟠🟠🟠best_hypothesis', best_hypothesis)
+            # Select the best hypothesis based on ranking
+            best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
+            print('🟠🟠🟠best_hypothesis', best_hypothesis)
 
-        # TODO: do a recursive call here call the model that generate function again but pass the correct tokens and using them as the hot words
-        # generate_with_fallback
-        # add a plug to skip the finding of the hot words since we only need to do that at the first call of the function
-        # Add a additional plug such that aside from updating the prompt, we also do another re-ranking so that we're making sure that the last selected output contains the hotwords
-        # It might not be a good idea to do any re-ranking because it overrides the lowest average probability which is mostly more accurate when trying to compare it from the audio to the transcription compared to just selecting the output based on the hack words
+            hotwords = "I need to discuss: " + ", ".join(context_related_keywords_array) + "."
+
+            # Calculate available space for the prompt after adding hotwords, considering the max length of 224 characters
+            available_space_for_prompt = 224 - len(hotwords) - 1  # -1 for the space between prompt and hotwords
+            prompt = tokenizer.decode(prompt).strip()
+            print('🟠🟠🟠initial prompt', prompt)
+
+            # Check if the prompt needs to be trimmed
+            if len(prompt) > available_space_for_prompt:
+                # Splitting the prompt into words
+                prompt_words = prompt.split()
+
+                # Determine how many words from the end to keep based on the available space
+                # Start from the end of the prompt, adding words to the trimmed prompt until reaching the available space
+                trimmed_prompt_words = []
+                current_length = 0
+                for word in reversed(prompt_words):
+                    if current_length + len(word) + 1 <= available_space_for_prompt:  # +1 for the space
+                        trimmed_prompt_words.insert(0, word)  # Insert at the beginning to maintain the correct order
+                        current_length += len(word) + 1  # +1 for the space
+                    else:
+                        break
+
+                # Joining the trimmed words back into a string to form the trimmed prompt
+                trimmed_prompt = " ".join(trimmed_prompt_words)
+            else:
+                trimmed_prompt = prompt
+
+            # Now, combining the trimmed prompt with hotwords, ensuring it doesn't exceed 224 characters in total
+            all_tokens = []
+            prompt_with_hotwords = f"{hotwords} {trimmed_prompt}".strip()
+            initial_prompt_tokens = tokenizer.encode(prompt_with_hotwords)
+            all_tokens.extend(initial_prompt_tokens)
+
+            prompt = self.get_prompt(
+                tokenizer,
+                all_tokens,
+                without_timestamps=options.without_timestamps,
+                prefix=None,
+            )
+
+            print('🟠🟠🟠prompt', prompt_with_hotwords)
+            print('🟠🟠🟠prompt', prompt)
+
+            decode_result = self.generate_with_fallback(encoder_output, prompt, tokenizer, options, hotword_injection=False)
+            return decode_result
 
         return decode_result
 
