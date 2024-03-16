@@ -11,6 +11,7 @@ import ctranslate2
 import numpy as np
 import tokenizers
 
+from faster_whisper.perf import TimingHelper
 from faster_whisper.phonetic import get_matching_custom_words
 from faster_whisper.audio import decode_audio, pad_or_trim
 from faster_whisper.feature_extractor import FeatureExtractor
@@ -23,6 +24,8 @@ from faster_whisper.vad import (
     get_speech_timestamps,
 )
 
+
+timing_helper = TimingHelper()
 
 class Word(NamedTuple):
     start: float
@@ -445,6 +448,7 @@ class WhisperModel:
         )
 
         segments = self.generate_segments(features, tokenizer, options, encoder_output)
+        timing_helper.print()
 
         if speech_chunks:
             segments = restore_speech_timestamps(segments, speech_chunks, sampling_rate)
@@ -470,6 +474,8 @@ class WhisperModel:
     ) -> Iterable[Segment]:
         content_frames = features.shape[-1] - self.feature_extractor.nb_max_frames
         content_duration = float(content_frames * self.feature_extractor.time_per_frame)
+
+        timing_helper.start('generating prompt')
 
         if isinstance(options.clip_timestamps, str):
             TranscriptionOptions.clip_timestamps = [
@@ -507,12 +513,17 @@ class WhisperModel:
             else:
                 all_tokens.extend(options.initial_prompt)
 
+        timing_helper.stop('generating prompt')
+
         last_speech_timestamp = 0.0
         # NOTE: This loop is obscurely flattened to make the diff readable.
         # A later commit should turn this into a simpler nested loop.
         # for seek_clip_start, seek_clip_end in seek_clips:
         #     while seek < seek_clip_end
         while clip_idx < len(seek_clips):
+            timing_helper.start('getting clip ids')
+
+            timing_helper.start('segment vars')
             seek_clip_start, seek_clip_end = seek_clips[clip_idx]
             if seek_clip_end > content_frames:
                 seek_clip_end = content_frames
@@ -536,12 +547,14 @@ class WhisperModel:
             segment = features[:, seek : seek + segment_size]
             segment_duration = segment_size * self.feature_extractor.time_per_frame
             segment = pad_or_trim(segment, self.feature_extractor.nb_max_frames)
+            timing_helper.stop('segment vars')
 
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(
                     "Processing segment at %s", format_timestamp(time_offset)
                 )
 
+            timing_helper.start('prompt vars')
             previous_tokens = all_tokens[prompt_reset_since:]
             prompt = self.get_prompt(
                 tokenizer,
@@ -549,9 +562,16 @@ class WhisperModel:
                 without_timestamps=options.without_timestamps,
                 prefix=options.prefix if seek == 0 else None,
             )
+            timing_helper.stop('prompt vars')
 
+            timing_helper.start('encode')
             if seek > 0 or encoder_output is None:
                 encoder_output = self.encode(segment)
+            timing_helper.stop('encode')
+
+            timing_helper.stop('getting clip ids')
+
+            timing_helper.start('generating decoder')
 
             (
                 result,
@@ -560,6 +580,9 @@ class WhisperModel:
                 compression_ratio,
             ) = self.generate_with_fallback(encoder_output, prompt, tokenizer, options)
 
+            timing_helper.stop('generating decoder')
+
+            timing_helper.start('no_speech_threshold')
             if options.no_speech_threshold is not None:
                 # no voice activity check
                 should_skip = result.no_speech_prob > options.no_speech_threshold
@@ -581,6 +604,8 @@ class WhisperModel:
                     # fast-forward to the next segment boundary
                     seek += segment_size
                     continue
+            timing_helper.stop('no_speech_threshold')
+
 
             tokens = result.sequences_ids[0]
 
@@ -611,11 +636,14 @@ class WhisperModel:
             def next_words_segment(segments: List[dict]) -> Optional[dict]:
                 return next((s for s in segments if s["words"]), None)
 
+            timing_helper.start('single_timestamp_ending')
             single_timestamp_ending = (
                 len(tokens) >= 2
                 and tokens[-2] < tokenizer.timestamp_begin <= tokens[-1]
             )
+            timing_helper.stop('single_timestamp_ending')
 
+            timing_helper.start('consecutive_timestamps')
             consecutive_timestamps = [
                 i
                 for i in range(len(tokens))
@@ -623,7 +651,9 @@ class WhisperModel:
                 and tokens[i] >= tokenizer.timestamp_begin
                 and tokens[i - 1] >= tokenizer.timestamp_begin
             ]
+            timing_helper.stop('consecutive_timestamps')
 
+            timing_helper.start('before generation')
             if len(consecutive_timestamps) > 0:
                 slices = list(consecutive_timestamps)
                 if single_timestamp_ending:
@@ -753,6 +783,9 @@ class WhisperModel:
                 if last_word_end is not None:
                     last_speech_timestamp = last_word_end
 
+            timing_helper.stop('before generation')
+
+            timing_helper.start('generate segments for loop')
             for segment in current_segments:
                 tokens = segment["tokens"]
                 text = tokenizer.decode(tokens)
@@ -780,7 +813,9 @@ class WhisperModel:
                         else None
                     ),
                 )
+            timing_helper.stop('generate segments for loop')
 
+            timing_helper.start('after generate segments for loop')
             if (
                 not options.condition_on_previous_text
                 or temperature > options.prompt_reset_on_temperature
@@ -793,16 +828,33 @@ class WhisperModel:
                     )
 
                 prompt_reset_since = len(all_tokens)
+            timing_helper.stop('after generate segments for loop')
 
     def encode(self, features: np.ndarray) -> ctranslate2.StorageView:
+
         # When the model is running on multiple GPUs, the encoder output should be moved
         # to the CPU since we don't know which GPU will handle the next job.
+        timing_helper.start('encode to_cpu')
         to_cpu = self.model.device == "cuda" and len(self.model.device_index) > 1
+        timing_helper.stop('encode to_cpu')
 
+        timing_helper.start('encode expand')
         features = np.expand_dims(features, 0)
-        features = get_ctranslate2_storage(features)
+        timing_helper.stop('encode expand')
 
-        return self.model.encode(features, to_cpu=to_cpu)
+        timing_helper.start('encode storage')
+        features = get_ctranslate2_storage(features)
+        timing_helper.stop('encode storage')
+
+        # TODO: Here is the main bottleneck. Maybe we could check if we could cache this in memory to prevent it from encoding if it is encoded before
+        # I have to check the actual files in c translate 2
+        # https://github.com/OpenNMT/CTranslate2/blob/master/src/models/whisper.cc
+        # https://github.com/OpenNMT/CTranslate2/blob/master/include/ctranslate2/layers/whisper.h
+        timing_helper.start('encode return_val')
+        return_val = self.model.encode(features, to_cpu=to_cpu)
+        timing_helper.stop('encode return_val')
+
+        return return_val
 
     def rank_hypotheses(self, hypotheses, desired_words):
         scores = []
