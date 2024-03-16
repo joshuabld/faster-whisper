@@ -448,7 +448,6 @@ class WhisperModel:
         )
 
         segments = self.generate_segments(features, tokenizer, options, encoder_output)
-        timing_helper.print()
 
         if speech_chunks:
             segments = restore_speech_timestamps(segments, speech_chunks, sampling_rate)
@@ -462,6 +461,8 @@ class WhisperModel:
             vad_options=vad_parameters,
             all_language_probs=all_language_probs,
         )
+
+        timing_helper.print()
 
         return segments, info
 
@@ -814,6 +815,7 @@ class WhisperModel:
                     ),
                 )
             timing_helper.stop('generate segments for loop')
+            timing_helper.print()
 
             timing_helper.start('after generate segments for loop')
             if (
@@ -829,6 +831,7 @@ class WhisperModel:
 
                 prompt_reset_since = len(all_tokens)
             timing_helper.stop('after generate segments for loop')
+            timing_helper.print()
 
     def encode(self, features: np.ndarray) -> ctranslate2.StorageView:
 
@@ -853,6 +856,8 @@ class WhisperModel:
         timing_helper.start('encode return_val')
         return_val = self.model.encode(features, to_cpu=to_cpu)
         timing_helper.stop('encode return_val')
+
+        timing_helper.print()
 
         return return_val
 
@@ -1068,6 +1073,14 @@ class WhisperModel:
             decode_result = self.generate_with_fallback(encoder_output, prompt, tokenizer, options, hotword_injection=False)
             return decode_result
 
+        """
+        🚀🚀🚀 encode took 0.1778 seconds.
+        🚀🚀🚀 getting clip ids took 0.1781 seconds.
+        🚀🚀🚀 generating decoder took 0.9649 seconds.
+        
+        My initial hunch that the bottleneck was the encoder was incorrect. 
+        When I check it again, it seems the main bottleneck is the decoder
+        """
         return decode_result
 
     def get_prompt(
