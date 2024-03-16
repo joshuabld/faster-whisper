@@ -115,18 +115,17 @@ def get_matching_custom_words(sentence):
 
     # Generate phonetic representations for the first two letters of each significant word in the sentence
     # Now considering both primary and secondary phonetic codes
-    first_letters_phonetics = set()
-    for word in sentence_words:
-        if len(word) > 1:
-            primary, secondary = doublemetaphone(word[:char_length_comparison])
-            first_letters_phonetics.update([code for code in (primary, secondary) if code])
-
-    # Filter the matching custom words to include those whose phonetic representations (of their first two letters) match any in the sentence
     filtered_matching_words = []
-    for word in matching_custom_words:
-        word_phonetic_codes = doublemetaphone(word[:char_length_comparison])
-        if any(code in first_letters_phonetics for code in word_phonetic_codes if code):
-            filtered_matching_words.append(word)
+    for custom_word in matching_custom_words:
+        char_length_comparison = max(3, len(custom_word) // 2)
+
+        custom_word_phonetic_codes = doublemetaphone(custom_word[:char_length_comparison])
+        for sentence_word in sentence_words:
+            if len(sentence_word) > 1:
+                sentence_word_phonetic_codes = doublemetaphone(sentence_word[:char_length_comparison])
+                if any(code in custom_word_phonetic_codes for code in sentence_word_phonetic_codes if code):
+                    filtered_matching_words.append(custom_word)
+                    break
 
     print("AFTER:", filtered_matching_words)
 
