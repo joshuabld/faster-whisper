@@ -1,5 +1,6 @@
 from metaphone import doublemetaphone
 import Levenshtein
+import re
 
 
 def generate_consecutive_word_pairs(sentence):
@@ -26,27 +27,28 @@ def create_phonetic_dictionary_from_file(file_path):
 file_path = "/home/joshua/extrafiles/projects/WhisperingAssistant/whispering_assistant/assets/docs/phonetic_custom_words.txt"
 
 # Create phonetic dictionary from file
-phonetic_dict = create_phonetic_dictionary_from_file(file_path)
-print("Phonetic dictionary:", phonetic_dict)
+phonetic_dict_default = create_phonetic_dictionary_from_file(file_path)
+print("Phonetic dictionary:", phonetic_dict_default)
+
+ignore_words = {'this', 'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'can', 'could',
+                'may', 'might', 'must', 'in', 'on', 'at', 'of', 'to', 'as', 'by', 'for', 'with', 'about', 'against',
+                'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up',
+                'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here',
+                'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most',
+                'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
+                's', 't', 'can', 'will', 'just', 'don', 'should', 'now'}
 
 
 def find_matching_custom_words(sentence, phonetic_dict, fuzzy_match=False):
-    """
-    Find custom words that phonetically match or are close based on Levenshtein distance, excluding common articles.
-
-    :param sentence: The sentence to be analyzed.
-    :param phonetic_dict: A dictionary of custom words and their phonetic representations.
-    :param fuzzy_match: Boolean to enable fuzzy matching.
-    :return: A list of custom words that have a phonetic match in the sentence.
-    """
-    ignore_words = {'this', 'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'in', 'on', 'at', 'of', 'to', 'as', 'by',
-                    'for'}
-
     # Split sentence and filter out ignore words
     words = [word for word in sentence.split() if word.lower() not in ignore_words]
 
     # Generate combinations of consecutive words
     word_combinations = generate_consecutive_word_pairs(sentence.lower()) + words
+    word_combinations = [re.sub(r'[^a-zA-Z0-9]', '', item) for item in word_combinations]
+    word_combinations = [item.lower() for item in word_combinations]
+    word_combinations = list(set(word_combinations))
 
     sentence_phonetics = [doublemetaphone(word_combo) for word_combo in word_combinations]
 
@@ -95,18 +97,7 @@ def find_matching_custom_words(sentence, phonetic_dict, fuzzy_match=False):
 
 
 def get_matching_custom_words(sentence):
-    # Define a set of words to ignore (articles, conjunctions, etc.)
-    ignore_words = {'this', 'the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-                    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'shall', 'should', 'can', 'could',
-                    'may', 'might', 'must', 'in', 'on', 'at', 'of', 'to', 'as', 'by', 'for', 'with', 'about', 'against',
-                    'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up',
-                    'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here',
-                    'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most',
-                    'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very',
-                    's', 't', 'can', 'will', 'just', 'don', 'should', 'now'}
-    char_length_comparison = 3
-
-    matching_custom_words = find_matching_custom_words(sentence, phonetic_dict, fuzzy_match=True)
+    matching_custom_words = find_matching_custom_words(sentence, phonetic_dict=phonetic_dict_default, fuzzy_match=True)
 
     print("BEFORE:", matching_custom_words)
 
@@ -134,7 +125,6 @@ def get_matching_custom_words(sentence):
     #     return "topics about " + ", ".join(filtered_matching_words)
 
     return filtered_matching_words
-
 
 # Example usage with fuzzy matching enabled
 # sentence = "this is a test for when cut and going in throwing carbonite in the city, yurii will help ramoan"

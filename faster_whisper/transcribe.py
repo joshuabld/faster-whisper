@@ -856,33 +856,18 @@ class WhisperModel:
 
         return return_val
 
-    def rank_hypotheses(self, hypotheses, desired_words):
-        scores = []
-
+    def get_text_hypotheses(self, hypotheses):
+        texts = []
         for hypothesis in hypotheses:
             if isinstance(hypothesis, tuple):
-                whisper_result, logprob, temperature, *_ = hypothesis
-                # Iterate over each sequence in the WhisperGenerationResult
+                whisper_result, *_ = hypothesis
                 for sequence in whisper_result.sequences:
-                    # Construct the text from the sequence
-                    text = ''.join(sequence).replace('Ġ',
-                                                     ' ').strip().lower()  # Convert to lowercase for case-insensitive comparison
-                    # Score the sequence based on the presence of desired_words, also case-insensitive
-                    score = sum(word.lower() in text for word in
-                                desired_words)  # Convert desired_words to lowercase for comparison
-                    # Append the score and details for ranking
-                    scores.append((score, text, logprob, temperature))
+                    text = ''.join(sequence).replace('Ġ', ' ').strip()
+                    texts.append(text)
             else:
-                text = str(hypothesis).lower()  # Convert to lowercase for case-insensitive comparison
-                logprob = 0.0
-                temperature = 0.0
-                score = sum(
-                    word.lower() in text for word in desired_words)  # Convert desired_words to lowercase for comparison
-                scores.append((score, text, logprob, temperature))
-
-        # Sort the hypotheses based on the score
-        ranked = sorted(scores, reverse=True, key=lambda x: x[0])
-        return ranked
+                text = str(hypothesis)
+                texts.append(text)
+        return texts
 
     def generate_with_fallback(
         self,
@@ -1017,24 +1002,14 @@ class WhisperModel:
             )
 
         if hotword_injection:
-            # Rank all generated hypotheses
-            desired_words = ["Joshua", "Frances"]
-            ranked_hypotheses = self.rank_hypotheses(hypotheses=all_results, desired_words=desired_words)
-            print('🟠🟠🟠ranked_hypotheses', ranked_hypotheses)
-
-            # Extracting texts from ranked_hypotheses
-            texts_array = [hypothesis[1] for hypothesis in ranked_hypotheses]
+            texts_array = self.get_text_hypotheses(hypotheses=all_results)
             print('🟠🟠🟠texts_array', texts_array)
 
-            # Loop thru the texts_array and get the hotwords like
-            # context_prompt_related_keywords = get_matching_custom_words(draft_text)
-            # Initialize an empty list to store context-related keywords for each text
-            context_related_keywords_array = []
+            # Concatenate all the texts into a single string
+            concatenated_text = ' '.join(texts_array)
 
-            # Loop through each text in texts_array to extract hotwords
-            for draft_text in texts_array:
-                context_prompt_related_keywords = get_matching_custom_words(draft_text)
-                context_related_keywords_array.extend(context_prompt_related_keywords)
+            # Get the hotwords from the concatenated text
+            context_related_keywords_array = get_matching_custom_words(concatenated_text)
 
             # Convert the list to a set to remove duplicates, then convert it back to a list
             context_related_keywords_array = list(set(context_related_keywords_array))
@@ -1045,10 +1020,6 @@ class WhisperModel:
             # If there are no context-related keywords, return the decode_result directly
             if not context_related_keywords_array:
                 return decode_result
-
-            # Select the best hypothesis based on ranking
-            best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
-            print('🟠🟠🟠best_hypothesis', best_hypothesis)
 
             hotwords = "Topics I need: " + ", ".join(context_related_keywords_array) + "."
 
