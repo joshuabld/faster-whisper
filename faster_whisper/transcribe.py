@@ -1042,11 +1042,15 @@ class WhisperModel:
             # Print the array of context-related keywords for each text
             print('🟠🟠🟠context_related_keywords_array', context_related_keywords_array)
 
+            # If there are no context-related keywords, return the decode_result directly
+            if not context_related_keywords_array:
+                return decode_result
+
             # Select the best hypothesis based on ranking
             best_hypothesis = ranked_hypotheses[0] if ranked_hypotheses else None
             print('🟠🟠🟠best_hypothesis', best_hypothesis)
 
-            hotwords = "I need to discuss: " + ", ".join(context_related_keywords_array) + "."
+            hotwords = "Topics I need: " + ", ".join(context_related_keywords_array) + "."
 
             # Calculate available space for the prompt after adding hotwords, considering the max length of 224 characters
             available_space_for_prompt = 224 - len(hotwords) - 1  # -1 for the space between prompt and hotwords
