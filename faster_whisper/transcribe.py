@@ -74,6 +74,7 @@ class TranscriptionOptions(NamedTuple):
     clip_timestamps: Union[str, List[float]]
     hallucination_silence_threshold: Optional[float]
     hotwords: Optional[str]
+    hotwords_metaphone_injection: bool
 
 
 class TranscriptionInfo(NamedTuple):
@@ -227,7 +228,6 @@ class WhisperModel:
         condition_on_previous_text: bool = True,
         prompt_reset_on_temperature: float = 0.5,
         initial_prompt: Optional[Union[str, Iterable[int]]] = None,
-        hotwords: Optional[Union[str, Iterable[int]]] = None,
         prefix: Optional[str] = None,
         suppress_blank: bool = True,
         suppress_tokens: Optional[List[int]] = [-1],
@@ -243,6 +243,7 @@ class WhisperModel:
         clip_timestamps: Union[str, List[float]] = "0",
         hallucination_silence_threshold: Optional[float] = None,
         hotwords: Optional[str] = None,
+        hotwords_metaphone_injection: bool = False,
         language_detection_threshold: Optional[float] = None,
         language_detection_segments: int = 1,
     ) -> Tuple[Iterable[Segment], TranscriptionInfo]:
@@ -466,6 +467,7 @@ class WhisperModel:
             clip_timestamps=clip_timestamps,
             hallucination_silence_threshold=hallucination_silence_threshold,
             hotwords=hotwords,
+            hotwords_metaphone_injection=hotwords_metaphone_injection,
         )
 
         segments = self.generate_segments(features, tokenizer, options, encoder_output)
@@ -904,7 +906,7 @@ class WhisperModel:
         prompt: List[int],
         tokenizer: Tokenizer,
         options: TranscriptionOptions,
-        hotword_injection=True
+        enable_hotwords_metaphone_injection_recursive_flag: bool = True
     ) -> Tuple[ctranslate2.models.WhisperGenerationResult, float, float, float]:
         decode_result = None
         all_results = []
@@ -1030,7 +1032,7 @@ class WhisperModel:
                 decode_result[3],
             )
 
-        if hotword_injection:
+        if options.hotwords_metaphone_injection and enable_hotwords_metaphone_injection_recursive_flag:
             texts_array = self.get_text_hypotheses(hypotheses=all_results)
             print('🟠🟠🟠texts_array', texts_array)
 
@@ -1050,10 +1052,10 @@ class WhisperModel:
             if not context_related_keywords_array:
                 return decode_result
 
-            hotwords = "Topics I need: " + ", ".join(context_related_keywords_array) + "."
+            hotwords_metaphone = "Topics I need: " + ", ".join(context_related_keywords_array) + "."
 
             # Calculate available space for the prompt after adding hotwords, considering the max length of 224 characters
-            available_space_for_prompt = 224 - len(hotwords) - 1  # -1 for the space between prompt and hotwords
+            available_space_for_prompt = 224 - len(hotwords_metaphone) - 1  # -1 for the space between prompt and hotwords
             prompt = tokenizer.decode(prompt).strip()
             print('🟠🟠🟠initial prompt', prompt)
 
@@ -1080,7 +1082,7 @@ class WhisperModel:
 
             # Now, combining the trimmed prompt with hotwords, ensuring it doesn't exceed 224 characters in total
             all_tokens = []
-            prompt_with_hotwords = f"{hotwords} {trimmed_prompt}".strip()
+            prompt_with_hotwords = f"{hotwords_metaphone} {trimmed_prompt}".strip()
             initial_prompt_tokens = tokenizer.encode(prompt_with_hotwords)
             all_tokens.extend(initial_prompt_tokens)
 
@@ -1094,7 +1096,7 @@ class WhisperModel:
             print('🟠🟠🟠prompt', prompt_with_hotwords)
             print('🟠🟠🟠prompt', prompt)
 
-            decode_result = self.generate_with_fallback(encoder_output, prompt, tokenizer, options, hotword_injection=False)
+            decode_result = self.generate_with_fallback(encoder_output, prompt, tokenizer, options, enable_hotwords_metaphone_injection_recursive_flag=False)
             return decode_result
 
         """

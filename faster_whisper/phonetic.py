@@ -108,7 +108,8 @@ def get_matching_custom_words(sentence):
     # Now considering both primary and secondary phonetic codes
     filtered_matching_words = []
     for custom_word in matching_custom_words:
-        char_length_comparison = max(3, len(custom_word) // 2)
+        # The higher the char_length_comparison the higher chance that it might filter out valid hot words
+        char_length_comparison = max(2, len(custom_word) // 2)
 
         custom_word_phonetic_codes = doublemetaphone(custom_word[:char_length_comparison])
         for sentence_word in sentence_words:
